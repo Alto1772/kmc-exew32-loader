@@ -1,0 +1,5 @@
+*.d
+*.o
+exe32-linux
+
+log.txt

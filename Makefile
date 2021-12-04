@@ -1,0 +1,45 @@
+HEADERS = $(wildcard *.h)
+SOURCES = $(wildcard *.c)
+OBJECTS = $(SOURCES:.c=.o)
+DEPFILES = $(SOURCES:.c=.d)
+
+EXEPROGNAME = exe32-linux
+EXEPROGVER = 0.1 alpha
+BASE_PATH = kmc/gcc/mipse/bin
+
+CFLAGS = -m32 -Wall -Wextra -DDEFAULT_BASE_PATH=\"$(BASE_PATH)/\" -DEXEPROGNAME=\"$(EXEPROGNAME)\" -DEXEPROGVER="\"$(EXEPROGVER)\""
+LDFLAGS = -m32
+
+ifeq ($(NO_DEBUG), 1)
+CFLAGS += -DNDEBUG -O2
+else
+CFLAGS += -g
+
+ifeq ($(WITH_LOG_FILE), 1)
+CFLAGS += -DLOG_FILE=\"log.txt\"
+endif
+endif
+
+all: $(EXEPROGNAME)
+
+clean: clean-symlink
+	rm -f $(OBJECTS) $(DEPFILES) $(EXEPROGNAME)
+
+%.o: %.c
+	@$(CC) -MM -MMD -MP -MF"$*.d" -c $(CFLAGS) -o $@ $<
+	$(CC) -c $(CFLAGS) -o $@ $<
+
+$(EXEPROGNAME): $(OBJECTS)
+	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
+
+wp_progs = $(wildcard $(BASE_PATH)/*.out)
+
+symlinks: $(EXEPROGNAME)
+	for f in $(basename $(notdir $(wp_progs))); do ln -s $< $$f; done
+
+clean-symlinks:
+	rm -f $(basename $(notdir $(wp_progs)))
+
+.PHONY: all clean
+
+-include $(DEPFILES)
