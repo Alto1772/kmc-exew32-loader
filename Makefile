@@ -4,20 +4,21 @@ OBJECTS = $(SOURCES:.c=.o)
 DEPFILES = $(SOURCES:.c=.d)
 
 EXEPROGNAME = exe32-linux
-EXEPROGVER = 0.1 alpha
+EXEPROGVER = 1
 BASE_PATH = kmc/gcc/mipse/bin
 
 CFLAGS = -m32 -Wall -Wextra -DDEFAULT_BASE_PATH=\"$(BASE_PATH)/\" -DEXEPROGNAME=\"$(EXEPROGNAME)\" -DEXEPROGVER="\"$(EXEPROGVER)\""
 LDFLAGS = -m32
 
-ifeq ($(NO_DEBUG), 1)
-CFLAGS += -DNDEBUG -O2
-else
+ifeq ($(DEBUG), 1)
 CFLAGS += -g
 
 ifeq ($(WITH_LOG_FILE), 1)
 CFLAGS += -DLOG_FILE=\"log.txt\"
 endif
+
+else
+CFLAGS += -DNDEBUG -O2
 endif
 
 all: $(EXEPROGNAME)
