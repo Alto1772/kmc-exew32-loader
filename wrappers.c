@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include <assert.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <time.h>
@@ -20,15 +19,6 @@ static DIR *find_file_obj = NULL;
 #define SET_ERROR_CODE(errcode) *wpexec->wp_errcode_ptr = errcode
 #define GET_REAL_FILENO(fd) fileno(fd_fileptrs[fd])
 
-#define FUNCWRAPPER(func) CDECL static int func##_wrapper
-#define FUNCWRAPPER_RET(rettyp, func) CDECL static rettyp func##_wrapper
-#define FUNCWRAPPER_ARRDEF(func) (func_wrapper)func##_wrapper
-#define NOT_IMPLEMENTED(func, ...) \
-    CDECL static void func##_wrapper(void) { \
-        PRINT_DBG(#func ": NOT IMPLEMENTED!\n"); \
-        assert(0 && "Not Implemented:" #func); \
-    }
-
 // -- Extra parameters needed for init_first to satisfy the loaded program --
 // gcc.out also loads and runs certain programs inside this process's memory just like this exe32 program
 // (so that means when gcc.out needs to run as.out, gcc.out loads it inside the memory instead of using spawnvp for reasons,
@@ -43,26 +33,26 @@ static DIR *find_file_obj = NULL;
         return -1; \
     }
 
-#define DEFINE_FIXED_PATH(path) char *path##_tmp, *path##_tmp_dup
+#define DEFINE_FIXED_PATH(path) char *path##_fixed, *path##_fixed_dup
 #define FIX_PATH(path) \
-    path##_tmp = malloc(strlen(path) + 1); \
-    path##_tmp_dup = path##_tmp; \
-    strcpy(path##_tmp, path); \
-    strrep_backslashes(path##_tmp); \
-    path##_tmp = fix_win_path(path##_tmp); \
-    replace_case_path(path##_tmp)
+    path##_fixed = malloc(strlen(path) + 1); \
+    path##_fixed_dup = path##_fixed; \
+    strcpy(path##_fixed, path); \
+    strrep_backslashes(path##_fixed); \
+    path##_fixed = fix_win_path(path##_fixed); \
+    replace_case_path(path##_fixed)
 
-#define FREE_PATH(path) free(path##_tmp_dup)
+#define FREE_PATH(path) free(path##_fixed_dup)
 
 // TODO: the loaded program changes the stack pointer to the address of init_first function, decide whether or not add a code that restores the stack pointer temporarily before jumping to these wrappers?
 
-FUNCWRAPPER(realloc_segment) (UNUSED uint addr_high) {
+CDECL static int realloc_segment_wrapper (UNUSED uint addr_high) {
     // we don't need this because we've allocated enough space for the loaded program
     PRINT_DBG("realloc_segment: address 0x%08x\n", addr_high << 12);
     return 0;
 }
 
-FUNCWRAPPER(open_file) (char *filename, exe32_fopen_mode mode) {
+CDECL static int open_file_wrapper (char *filename, exe32_fopen_mode mode) {
     int fdno;
     char *fopen_mode = NULL;
     FILE *fp;
@@ -86,7 +76,7 @@ FUNCWRAPPER(open_file) (char *filename, exe32_fopen_mode mode) {
     }
 
     FIX_PATH(filename);
-    fp = fopen(filename_tmp, fopen_mode);
+    fp = fopen(filename_fixed, fopen_mode);
     if (fp == NULL) {
         PRINT_DBG("open_file: cannot open (%s)\n", strerror(errno));
         SET_ERROR_CODE(ERR_FILE_NOT_FOUND);
@@ -100,7 +90,7 @@ FUNCWRAPPER(open_file) (char *filename, exe32_fopen_mode mode) {
     return fdno;
 }
 
-FUNCWRAPPER(create_file) (char *filename, UNUSED int attrs) {
+CDECL static int create_file_wrapper (char *filename, UNUSED int attrs) {
     int fdno;
     FILE *fp;
     DEFINE_FIXED_PATH(filename);
@@ -108,7 +98,7 @@ FUNCWRAPPER(create_file) (char *filename, UNUSED int attrs) {
     PRINT_DBG("create_file: Create \"%s\" with attributes %d\n", filename, attrs);
 
     FIX_PATH(filename);
-    fp = fopen(filename_tmp, "wb");
+    fp = fopen(filename_fixed, "wb");
     if (fp == NULL) {
         PRINT_DBG("create_file: cannot write (%s)\n", strerror(errno));
         SET_ERROR_CODE(ERR_PATH_NOT_FOUND); // ???
@@ -122,7 +112,7 @@ FUNCWRAPPER(create_file) (char *filename, UNUSED int attrs) {
     return fdno;
 }
 
-FUNCWRAPPER(write) (int fd, void *data, ulong size) {
+CDECL static int write_wrapper (int fd, void *data, ulong size) {
     size_t b_write;
 
     IS_VALID_FD(fd)
@@ -132,7 +122,7 @@ FUNCWRAPPER(write) (int fd, void *data, ulong size) {
     return b_write;
 }
 
-FUNCWRAPPER(read) (int fd, void *data, ulong size) {
+CDECL static int read_wrapper (int fd, void *data, ulong size) {
     size_t b_read;
 
     IS_VALID_FD(fd)
@@ -141,7 +131,7 @@ FUNCWRAPPER(read) (int fd, void *data, ulong size) {
     return b_read;
 }
 
-FUNCWRAPPER(close) (int fd) {
+CDECL static int close_wrapper (int fd) {
     PRINT_DBG("close: closed fd %d\n", fd);
     IS_VALID_FD(fd)
 
@@ -150,7 +140,7 @@ FUNCWRAPPER(close) (int fd) {
     return 0;
 }
 
-FUNCWRAPPER(seek) (int fd, long offset, int whence) {
+CDECL static int seek_wrapper (int fd, long offset, int whence) {
     PRINT_DBG("seek: seek fd %d at offset %#lx bytes from whence %d\n", fd, offset, whence);
     long ret_offset;
 
@@ -164,7 +154,7 @@ FUNCWRAPPER(seek) (int fd, long offset, int whence) {
     return (uint)ret_offset;
 }
 
-FUNCWRAPPER(file_attrs) (char *filename, UNUSED uint f_attributes, UNUSED int set_attr) {
+CDECL static int file_attrs_wrapper (char *filename, UNUSED uint f_attributes, UNUSED int set_attr) {
     int ret = 0;
     struct stat sfile;
     DEFINE_FIXED_PATH(filename);
@@ -172,7 +162,7 @@ FUNCWRAPPER(file_attrs) (char *filename, UNUSED uint f_attributes, UNUSED int se
     FIX_PATH(filename);
     if (!set_attr) {
         PRINT_DBG("file_attrs: get attributes \"%s\"\n", filename);
-        if (stat(filename_tmp, &sfile)) {
+        if (stat(filename_fixed, &sfile)) {
             PRINT_DBG("file_attrs: file not found!\n");
             SET_ERROR_CODE(ERR_FILE_NOT_FOUND);
             ret = -1;
@@ -203,7 +193,7 @@ FUNCWRAPPER(file_attrs) (char *filename, UNUSED uint f_attributes, UNUSED int se
     return ret;
 }
 
-FUNCWRAPPER(set_dta) (struct unk_dta_s *dta) {
+CDECL static int set_dta_wrapper (struct unk_dta_s *dta) {
     PRINT_DBG("set_dta: [%p]\n", dta);
     wpexec->wp_filedata = dta;
     return 0;
@@ -244,7 +234,7 @@ int copy_dirent_to_dta(struct dirent *dent) {
     return 0;
 }
 
-FUNCWRAPPER(list_file_close) (void) {
+CDECL static int list_file_close_wrapper (void) {
     PRINT_DBG("list_file_close: close\n");
     if (find_file_obj) {
         closedir(find_file_obj);
@@ -253,7 +243,7 @@ FUNCWRAPPER(list_file_close) (void) {
     return 0;
 }
 
-FUNCWRAPPER(list_file) (char *path, UNUSED uint attr_mask) {
+CDECL static int list_file_wrapper (char *path, UNUSED uint attr_mask) {
     // This function does not set error code
     if (find_file_obj) {
         closedir(find_file_obj);
@@ -280,31 +270,31 @@ FUNCWRAPPER(list_file) (char *path, UNUSED uint attr_mask) {
         FIX_PATH(path);
 
         PRINT_DBG("list_file: path = \"%s\", attr_mask = 0x%04x\n", path, attr_mask);
-        if(stat(path_tmp, &spath)) {
+        if(stat(path_fixed, &spath)) {
             PRINT_DBG("list_file: cannot stat (%s)\n", strerror(errno));
-            free(path_tmp_dup);
+            free(path_fixed_dup);
             return -1;
         }
         if (S_ISDIR(spath.st_mode)) {
             // TODO: implement opendir
             PRINT_DBG("list_file: is a directory, opendir not implemented\n");
-            //free(path_tmp_dup);
+            //free(path_fixed_dup);
             //return -1;
         }
         else if (!S_ISREG(spath.st_mode)) {
             PRINT_DBG("list_file: other types besides file, not implemented\n");
-            //free(path_tmp_dup);
+            //free(path_fixed_dup);
             //return -1;
         }
 
-        copy_stat_to_dta(&spath, basename(path_tmp));
+        copy_stat_to_dta(&spath, basename(path_fixed));
         FREE_PATH(path);
     }
 
     return 0;
 }
 
-FUNCWRAPPER(list_file_next) (void) {
+CDECL static int list_file_next_wrapper (void) {
     struct dirent *dent;
     if (!(dent = readdir(find_file_obj))) {
         //PRINT_DBG("list_file_next: cannot readdir (%s)\n", strerror(errno));
@@ -315,12 +305,12 @@ FUNCWRAPPER(list_file_next) (void) {
     return copy_dirent_to_dta(dent);
 }
 
-FUNCWRAPPER(isatty) (int fd) {
+CDECL static int isatty_wrapper (int fd) {
     IS_VALID_FD(fd)
     return isatty(GET_REAL_FILENO(fd)) ? 0x80 : 0x0;
 }
 
-FUNCWRAPPER(get_file_time) (int fd, struct dos_datetime_s *dos_dt) {
+CDECL static int get_file_time_wrapper (int fd, struct dos_datetime_s *dos_dt) {
     struct stat fst;
     struct tm *time;
 
@@ -340,16 +330,23 @@ FUNCWRAPPER(get_file_time) (int fd, struct dos_datetime_s *dos_dt) {
     return 0;
 }
 
-NOT_IMPLEMENTED(get_localtime,   struct systemtime_s systemtime)
-NOT_IMPLEMENTED(set_file_time,   int fd, struct dos_datetime_s *dos_dt)
+CDECL static int get_localtime_wrapper (struct systemtime_s systemtime) {
+    PRINT_DBG("get_localtime: NOT IMPLEMENTED!\n");  // TODO
+    return -1;
+}
 
-FUNCWRAPPER(mkdir) (char *dirname) {
+CDECL static int set_file_time_wrapper (int fd, struct dos_datetime_s *dos_dt) {
+    PRINT_DBG("set_file_time: NOT IMPLEMENTED!\n");  // TODO
+    return -1;
+}
+
+CDECL static int mkdir_wrapper (char *dirname) {
     int ret = 0;
     DEFINE_FIXED_PATH(dirname);
     FIX_PATH(dirname);
 
     PRINT_DBG("mkdir: \"%s\"\n", dirname);
-    if(mkdir(dirname_tmp, 0777)) {
+    if(mkdir(dirname_fixed, 0777)) {
         PRINT_DBG("mkdir: cannot mkdir (%s)\n", strerror(errno));
         SET_ERROR_CODE(ERR_PATH_NOT_FOUND);
         ret = -1;
@@ -359,13 +356,13 @@ FUNCWRAPPER(mkdir) (char *dirname) {
     return ret;
 }
 
-FUNCWRAPPER(rmdir) (char *dirname) {
+CDECL static int rmdir_wrapper (char *dirname) {
     int ret = 0;
     DEFINE_FIXED_PATH(dirname);
     FIX_PATH(dirname);
 
     PRINT_DBG("rmdir: \"%s\"\n", dirname);
-    if(rmdir(dirname_tmp)) {
+    if(rmdir(dirname_fixed)) {
         PRINT_DBG("rmdir: cannot rmdir (%s)\n", strerror(errno));
         SET_ERROR_CODE(ERR_PATH_NOT_FOUND);
         ret = -1;
@@ -375,13 +372,13 @@ FUNCWRAPPER(rmdir) (char *dirname) {
     return ret;
 }
 
-FUNCWRAPPER(remove) (char *path) {
+CDECL static int remove_wrapper (char *path) {
     int ret = 0;
     DEFINE_FIXED_PATH(path);
     FIX_PATH(path);
 
     PRINT_DBG("remove: unlink \"%s\"\n", path);
-    if ((ret = remove(path_tmp))) {
+    if ((ret = remove(path_fixed))) {
         PRINT_DBG("remove: cannot unlink (%s)\n", strerror(errno));
         SET_ERROR_CODE(ERR_FILE_NOT_FOUND); // copied
         ret = -1;
@@ -391,7 +388,7 @@ FUNCWRAPPER(remove) (char *path) {
     return ret;
 }
 
-FUNCWRAPPER(rename) (char *oldpath, char *newpath) {
+CDECL static int rename_wrapper (char *oldpath, char *newpath) {
     int ret = 0;
     DEFINE_FIXED_PATH(oldpath);
     DEFINE_FIXED_PATH(newpath);
@@ -399,7 +396,7 @@ FUNCWRAPPER(rename) (char *oldpath, char *newpath) {
     FIX_PATH(newpath);
 
     PRINT_DBG("rename: move \"%s\" to \"%s\"\n", oldpath, newpath);
-    if (rename(oldpath_tmp, newpath_tmp)) {
+    if (rename(oldpath_fixed, newpath_fixed)) {
         PRINT_DBG("rename: cannot mv (%s)\n", strerror(errno));
         SET_ERROR_CODE(ERR_PATH_NOT_FOUND);
         ret = -1;
@@ -410,7 +407,7 @@ FUNCWRAPPER(rename) (char *oldpath, char *newpath) {
     return ret;
 }
 
-FUNCWRAPPER(chdrive) (char *new_cwd, UNUSED char drive_num) {
+CDECL static int chdrive_wrapper (char *new_cwd, UNUSED char drive_num) {
     PRINT_DBG("chdrive: new_cwd ptr = %p, drive %c\n", new_cwd, drive_num + 'A');
 
 #if 0
@@ -435,13 +432,13 @@ FUNCWRAPPER(chdrive) (char *new_cwd, UNUSED char drive_num) {
     return 0;
 }
 
-FUNCWRAPPER(chdir) (char *dirname) {
+CDECL static int chdir_wrapper (char *dirname) {
     int ret = 0;
     DEFINE_FIXED_PATH(dirname);
     FIX_PATH(dirname);
 
     PRINT_DBG("chdir: dirname = %s\n", dirname);
-    if (chdir(dirname_tmp)) {
+    if (chdir(dirname_fixed)) {
         PRINT_DBG("chdir: chdir error (%s)\n", strerror(errno));
         SET_ERROR_CODE(ERR_PATH_NOT_FOUND);
         ret = -1;
@@ -451,7 +448,7 @@ FUNCWRAPPER(chdir) (char *dirname) {
     return ret;
 }
 
-FUNCWRAPPER(getdrive) (void) {
+CDECL static int getdrive_wrapper (void) {
     PRINT_DBG("getdrive: return value 0x3 (C drive)\n");
     return 'C' - 'A'; /* just return the fake C drive ;) */
 }
@@ -490,8 +487,8 @@ char **build_env_array(char *env) {
 
 char **build_argv(char *progname, int *argcp, char *args) {
     // TODO: add quoted entries
-    char *args_tmp = strdup(args), **ret_argv;
-    char *token = strtok(args_tmp, " \t\n");
+    char *args_fixed = strdup(args), **ret_argv;
+    char *token = strtok(args_fixed, " \t\n");
 
     if (token) {
         int argc = 1;
@@ -499,7 +496,7 @@ char **build_argv(char *progname, int *argcp, char *args) {
         do {
             argc++;
         } while ((token = strtok(NULL, " \t\n")));
-        free(args_tmp);
+        free(args_fixed);
 
         ret_argv = calloc(argc+1, sizeof(char *));
         argc = 0;
@@ -513,7 +510,7 @@ char **build_argv(char *progname, int *argcp, char *args) {
         *argcp = argc;
     }
     else {
-        free(args_tmp);
+        free(args_fixed);
         ret_argv = calloc(2, sizeof(char *));
         ret_argv[0] = progname;
         *argcp = 1;
@@ -524,7 +521,7 @@ char **build_argv(char *progname, int *argcp, char *args) {
 
 static int return_code;
 
-FUNCWRAPPER(spawnve) (char *progname, struct exec_s *exec_info) {
+CDECL static int spawnve_wrapper (char *progname, struct exec_s *exec_info) {
     // This function only does is to execute the program and wait for it to finish.
 
     int exec_argc, ret = 0;
@@ -536,19 +533,19 @@ FUNCWRAPPER(spawnve) (char *progname, struct exec_s *exec_info) {
     FIX_PATH(progname);
 
     PRINT_DBG("spawnve: progname = \"%s\", args = \"%s\"\n", progname, args);
-    exec_argv = build_argv(progname_tmp, &exec_argc, args);
+    exec_argv = build_argv(progname_fixed, &exec_argc, args);
 
-    if (!strcmp(basename(progname_tmp), "exew32.exe")) {
+    if (!strcmp(basename(progname_fixed), "exew32.exe")) {
         exec_wpname = exec_argv[1];
         FIX_PATH(exec_wpname);
-        exec_argv[1] = exec_wpname_tmp;
+        exec_argv[1] = exec_wpname_fixed;
     }
 
     {
         pid_t pid;
         int status = 0;
 
-        if (posix_spawn(&pid, progname_tmp, NULL, NULL, exec_argv, exec_env)) {
+        if (posix_spawn(&pid, progname_fixed, NULL, NULL, exec_argv, exec_env)) {
             PRINT_DBG("spawnve: cannot spawn (%s)\n", strerror(errno));
             ret = -1;
             goto spawnve_free;
@@ -581,11 +578,11 @@ spawnve_free:
     return ret;
 }
 
-FUNCWRAPPER(get_return_code) (void) {
+CDECL static int get_return_code_wrapper (void) {
     return return_code;
 }
 
-FUNCWRAPPER(dup) (int fd) {
+CDECL static int dup_wrapper (int fd) {
     int ret;
     IS_VALID_FD(fd)
 
@@ -594,7 +591,7 @@ FUNCWRAPPER(dup) (int fd) {
     return ret;
 }
 
-FUNCWRAPPER(dup2) (int src_fd, int dest_fd) {
+CDECL static int dup2_wrapper (int src_fd, int dest_fd) {
     PRINT_DBG("dup: duplicate fd %d to %d\n", src_fd, dest_fd);
     IS_VALID_FD(src_fd)
     IS_VALID_FD(dest_fd)
@@ -605,19 +602,19 @@ FUNCWRAPPER(dup2) (int src_fd, int dest_fd) {
     return dest_fd;
 }
 
-FUNCWRAPPER(get_dos_version) (void) {
+CDECL static int get_dos_version_wrapper (void) {
     return 5;
 }
 
-FUNCWRAPPER_RET(void, exit) (int status) {
+CDECL static void exit_wrapper (int status) {
     exit(status);
 }
 
-FUNCWRAPPER(direct_stdin) (void) {  // unused?
+CDECL static int direct_stdin_wrapper (void) {  // unused?
     return 0;
 }
 
-FUNCWRAPPER_RET(void, sleep) (long time_msec) { // unused on some programs
+CDECL static void sleep_wrapper (long time_msec) { // unused on some programs
     struct timespec ts;
 
     ts.tv_sec = time_msec / 1000;
@@ -627,38 +624,38 @@ FUNCWRAPPER_RET(void, sleep) (long time_msec) { // unused on some programs
 }
 
 func_wrapper io_wrappers[] = {
-    /*  0 */ FUNCWRAPPER_ARRDEF(realloc_segment),
-    /*  1 */ FUNCWRAPPER_ARRDEF(open_file),
-    /*  2 */ FUNCWRAPPER_ARRDEF(create_file),
-    /*  3 */ FUNCWRAPPER_ARRDEF(write),
-    /*  4 */ FUNCWRAPPER_ARRDEF(read),
-    /*  5 */ FUNCWRAPPER_ARRDEF(close),
-    /*  6 */ FUNCWRAPPER_ARRDEF(seek),
-    /*  7 */ FUNCWRAPPER_ARRDEF(file_attrs),
-    /*  8 */ FUNCWRAPPER_ARRDEF(set_dta),
-    /*  9 */ FUNCWRAPPER_ARRDEF(list_file),
-    /* 10 */ FUNCWRAPPER_ARRDEF(list_file_next),
-    /* 11 */ FUNCWRAPPER_ARRDEF(list_file_close),
-    /* 12 */ FUNCWRAPPER_ARRDEF(isatty),
-    /* 13 */ FUNCWRAPPER_ARRDEF(get_file_time),
-    /* 14 */ FUNCWRAPPER_ARRDEF(get_localtime),
-    /* 15 */ FUNCWRAPPER_ARRDEF(set_file_time),
-    /* 16 */ FUNCWRAPPER_ARRDEF(mkdir),
-    /* 17 */ FUNCWRAPPER_ARRDEF(rmdir),
-    /* 18 */ FUNCWRAPPER_ARRDEF(remove),
-    /* 19 */ FUNCWRAPPER_ARRDEF(rename),
-    /* 20 */ FUNCWRAPPER_ARRDEF(chdrive),
-    /* 21 */ FUNCWRAPPER_ARRDEF(chdir),
-    /* 22 */ FUNCWRAPPER_ARRDEF(getdrive),
-    /* 23 */ FUNCWRAPPER_ARRDEF(spawnve),
-    /* 24 */ FUNCWRAPPER_ARRDEF(get_return_code),
-    /* 25 */ FUNCWRAPPER_ARRDEF(dup),
-    /* 26 */ FUNCWRAPPER_ARRDEF(dup2),
-    /* 27 */ FUNCWRAPPER_ARRDEF(get_dos_version),
-    /* 28 */ FUNCWRAPPER_ARRDEF(exit),
-    /* 29 */ FUNCWRAPPER_ARRDEF(direct_stdin),
-    /* 30 */ FUNCWRAPPER_ARRDEF(sleep),
-    (func_wrapper)NULL
+    (func_wrapper) realloc_segment_wrapper,   /*  0 */
+    (func_wrapper) open_file_wrapper,         /*  1 */
+    (func_wrapper) create_file_wrapper,       /*  2 */
+    (func_wrapper) write_wrapper,             /*  3 */
+    (func_wrapper) read_wrapper,              /*  4 */
+    (func_wrapper) close_wrapper,             /*  5 */
+    (func_wrapper) seek_wrapper,              /*  6 */
+    (func_wrapper) file_attrs_wrapper,        /*  7 */
+    (func_wrapper) set_dta_wrapper,           /*  8 */
+    (func_wrapper) list_file_wrapper,         /*  9 */
+    (func_wrapper) list_file_next_wrapper,    /* 10 */
+    (func_wrapper) list_file_close_wrapper,   /* 11 */
+    (func_wrapper) isatty_wrapper,            /* 12 */
+    (func_wrapper) get_file_time_wrapper,     /* 13 */
+    (func_wrapper) get_localtime_wrapper,     /* 14 */
+    (func_wrapper) set_file_time_wrapper,     /* 15 */
+    (func_wrapper) mkdir_wrapper,             /* 16 */
+    (func_wrapper) rmdir_wrapper,             /* 17 */
+    (func_wrapper) remove_wrapper,            /* 18 */
+    (func_wrapper) rename_wrapper,            /* 19 */
+    (func_wrapper) chdrive_wrapper,           /* 20 */
+    (func_wrapper) chdir_wrapper,             /* 21 */
+    (func_wrapper) getdrive_wrapper,          /* 22 */
+    (func_wrapper) spawnve_wrapper,           /* 23 */
+    (func_wrapper) get_return_code_wrapper,   /* 24 */
+    (func_wrapper) dup_wrapper,               /* 25 */
+    (func_wrapper) dup2_wrapper,              /* 26 */
+    (func_wrapper) get_dos_version_wrapper,   /* 27 */
+    (func_wrapper) exit_wrapper,              /* 28 */
+    (func_wrapper) direct_stdin_wrapper,      /* 29 */
+    (func_wrapper) sleep_wrapper,             /* 30 */
+    (func_wrapper) NULL
 };
 
 void exec_init_first(init_first_t init_first, struct wrapprog_exec_s *exec_info) {

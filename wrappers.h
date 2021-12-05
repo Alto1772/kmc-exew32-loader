@@ -131,8 +131,11 @@ typedef struct wrapprog_exec_s {
     struct unk_dta_s *wp_filedata;
 } wrapprog_exec;
 
-typedef REGPARM2 void (*init_first_t)(uint, uint,
+typedef REGPARM2 void (*init_first_gcc)(uint, void *);
+typedef REGPARM2 void (*init_first_exe32)(uint, uint,
 		func_wrapper[], struct wrapprog_exec_s*);
+
+typedef init_first_exe32 init_first_t;
 
 void exec_init_first(init_first_t, struct wrapprog_exec_s *);
 
