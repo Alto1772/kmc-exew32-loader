@@ -119,26 +119,13 @@ void write_log(const char *format, ...) {
     va_end(args);
 }
 
-#include <fcntl.h>
-
 static void init_log(void) {
 #ifdef LOG_FILE
-    struct flock fl;
-    memset(&fl, 0, sizeof(fl));
-
     log_file = fopen(LOG_FILE, "w");
+
     if (log_file == NULL) {
         fprintf(stderr, "Error opening log file, using stderr\n");
         log_file = stderr;
-        return;
-    }
-
-    fl.l_type = F_WRLCK;
-    if (fcntl(fileno(log_file), F_SETLK, &fl) == -1) {
-        fprintf(stderr, "log file is write locked, using stderr\n");
-        fclose(log_file);
-        log_file = stderr;
-        return;
     }
 #else
     log_file = stderr;
