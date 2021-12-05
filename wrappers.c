@@ -217,7 +217,7 @@ void copy_stat_to_dta(struct stat *st, char *filename) {
         (time->tm_hour << 11);
     dta->datetime.date =
         (time->tm_mday) |
-        (time->tm_mon << 5) |
+        ((time->tm_mon + 1) << 5) |
         ((time->tm_year - 80) << 9);
     dta->filesize.low = st->st_size & 0xffff;
     dta->filesize.high = st->st_size >> 16;
@@ -325,17 +325,28 @@ CDECL static int get_file_time_wrapper (int fd, struct dos_datetime_s *dos_dt) {
         (time->tm_hour << 11);
     dos_dt->date =
         (time->tm_mday) |
-        (time->tm_mon << 5) |
+        ((time->tm_mon + 1) << 5) |
         ((time->tm_year - 80) << 9);
     return 0;
 }
 
-CDECL static int get_localtime_wrapper (struct systemtime_s systemtime) {
-    PRINT_DBG("get_localtime: NOT IMPLEMENTED!\n");  // TODO
-    return -1;
+CDECL static int get_localtime_wrapper (struct systemtime_s *systemtime) { // might be unused
+    time_t tm = time(NULL);
+    struct tm *localtm = localtime(&tm);
+    PRINT_DBG("get_localtime: %s", asctime(localtm));
+
+    systemtime->year = localtm->tm_year + 1900;
+    systemtime->mon  = localtm->tm_mon  + 1;
+    systemtime->mday = localtm->tm_mday;
+    systemtime->hour = localtm->tm_hour;
+    systemtime->min  = localtm->tm_min;
+    systemtime->sec  = localtm->tm_sec;
+    systemtime->msec = 0; // no miliseconds entry
+
+    return 0;
 }
 
-CDECL static int set_file_time_wrapper (int fd, struct dos_datetime_s *dos_dt) {
+CDECL static int set_file_time_wrapper (UNUSED int fd, UNUSED struct dos_datetime_s *dos_dt) { // might be unused
     PRINT_DBG("set_file_time: NOT IMPLEMENTED!\n");  // TODO
     return -1;
 }

@@ -108,12 +108,12 @@ struct unk_dta_s {
 
 struct systemtime_s {
     uint year;
-    uint month;
-    uint day;
+    uint mon;
+    uint mday;
     uint hour;
-    uint minute;
-    uint second;
-    uint msecond;
+    uint min;
+    uint sec;
+    uint msec;
 };
 
 struct exec_s {
