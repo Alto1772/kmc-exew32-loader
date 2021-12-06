@@ -53,6 +53,8 @@ CDECL static int realloc_segment_wrapper (UNUSED uint addr_high) {
 }
 
 CDECL static int open_file_wrapper (char *filename, exe32_fopen_mode mode) {
+    // CreateFileA with OPEN_EXISTING flag
+
     int fdno;
     char *fopen_mode = NULL;
     FILE *fp;
@@ -62,8 +64,8 @@ CDECL static int open_file_wrapper (char *filename, exe32_fopen_mode mode) {
         case EXE32_FOPEN_R:
             fopen_mode = "rb";
             break;
-        case EXE32_FOPEN_W:
-            fopen_mode = "wb";
+        case EXE32_FOPEN_W: 
+            fopen_mode = "r+b"; // "wb" truncates the file, and we dont want it to be, so...
             break;
         case EXE32_FOPEN_RW:
             fopen_mode = "r+b";
@@ -91,6 +93,8 @@ CDECL static int open_file_wrapper (char *filename, exe32_fopen_mode mode) {
 }
 
 CDECL static int create_file_wrapper (char *filename, UNUSED int attrs) {
+    // CreateFileA with CREATE_ALWAYS flag
+
     int fdno;
     FILE *fp;
     DEFINE_FIXED_PATH(filename);

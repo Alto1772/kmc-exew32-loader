@@ -169,6 +169,7 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
         }
 
         free(prg_secs);
+        fclose(fprg);
     }
 
     init_fd_fptrs();
