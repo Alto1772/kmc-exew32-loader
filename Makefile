@@ -23,7 +23,7 @@ endif
 
 all: $(EXEPROGNAME)
 
-clean: clean-symlink
+clean: clean-symlinks
 	rm -f $(OBJECTS) $(DEPFILES) $(EXEPROGNAME)
 
 %.o: %.c
