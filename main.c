@@ -82,14 +82,17 @@ static void parse_args(int argc, char **argv) {
         }
         else {
             PRINT_ERR("Please specify a \".out\" program to load and run.\n"
-                    "\n"
-                    EXEPROGNAME" - KMC COFF program loader v."EXEPROGVER"\n"
-                    "\n"
-                    "Usage: ./"EXEPROGNAME" <[path/]progname[.out]> [parameters ...]\n"
-                    "  or, if progname is symlinked to "EXEPROGNAME":\n"
-                    "  ./<progname> [parameters ...]\n"
-                    "\n"
-                    "Default Load Path: \"" DEFAULT_BASE_PATH "\"\n");
+                "\n"
+                EXEPROGNAME" - KMC COFF program loader v."EXEPROGVER"\n"
+                "\n"
+                "Usage: ./"EXEPROGNAME" <[path/]progname[.out]> [parameters ...]\n"
+                "  or, if progname is symlinked to "EXEPROGNAME":\n"
+                "  ./<progname> [parameters ...]\n"
+#ifdef DEFAULT_BASE_PATH
+                "\n"
+                "Default Load Path: \"" DEFAULT_BASE_PATH "\"\n"
+#endif
+            );
             exit(2);
         }
     }

@@ -1,11 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "common.h"
 #include "load.h"
 #include "coff.h"
 #include "wrappers.h"
 #include "fd.h"
+#include "paths.h"
 
 // lets set up a fake program path to fool that we are in win32 environment
 // needed by ld.out
@@ -28,7 +30,7 @@ static FILE *load_program_relative(const char *progname) {
     strcpy(fullpath, exe32_dirpath);
     strcat(fullpath, progname);
     f_ret = fopen(fullpath, "rb");
-    set_full_path(fullpath);
+    if (f_ret) set_full_path(fullpath);
     free(fullpath);
     return f_ret;
 }
@@ -64,12 +66,13 @@ static FILE *load_program_from_paths(const char *progname) {
             path_len = colon_delim - env_path;
         }
 
-        char *new_progname = malloc(path_len + prgname_len + 1);
+        char *new_progname = malloc(path_len + prgname_len + 2);
         memcpy(new_progname, env_path, path_len); /* that stupid stringop-trunctation warning is annoying to me! */
         new_progname[path_len] = '/';
         strcpy(new_progname + path_len + 1, progname);
 
         f_ret = fopen(new_progname, "rb");
+        if (f_ret) set_full_path(new_progname);
 
         PRINT_DBG("> from_paths: %s\n", new_progname);
         if (f_ret) {
@@ -85,27 +88,33 @@ static FILE *load_program_from_paths(const char *progname) {
     return NULL;
 }
 
+// search progname in exe32's directory, base path relative to exe32's dir, and in paths
+static FILE *load_program_basename(const char *progname) {
+    FILE *f_ret = load_program_relative(progname);
+    if (f_ret == NULL) {
+#ifdef DEFAULT_BASE_PATH
+        f_ret = load_program_from_base_path(progname);
+        if (f_ret == NULL)
+#endif
+            f_ret = load_program_from_paths(progname);
+    }
+    return f_ret;
+}
+
 static FILE *load_program(const char *progname) {
     if (progname[0] != '/') {
         char *prg_slashpos = strchr(progname, '/');
         if (prg_slashpos == NULL) {
-            FILE *f_ret = load_program_relative(progname);
-            if (f_ret == NULL) {
-#ifdef DEFAULT_BASE_PATH
-                f_ret = load_program_from_base_path(progname);
-                if (f_ret == NULL)
-#endif
-                    return load_program_from_paths(progname);
-            }
-            return f_ret; /* fallthrough */
+            return load_program_basename(progname);
         }
         else {
             return load_program_relative(progname);
         }
     }
-    else {
-        set_full_path(progname);
-        return fopen(progname, "rb");
+    else { // load_program_absolute
+        FILE *f_ret = fopen(progname, "rb");
+        if (f_ret) set_full_path(progname);
+        return f_ret;
     }
 }
 
@@ -116,15 +125,32 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
     init_first_t init_first_addr = NULL;
 
     // find the program file
-    fprg = is_exe32 ? load_program(progname) : load_program_from_base_path(basename(progname));
+    fprg = is_exe32 ? load_program(progname) : load_program_basename(basename(progname));
 
     if (fprg == NULL) {
-        PRINT_ERR("Cannot load \"%s\": ", progname);
-        perror(NULL);
-        exit(10);
+        char *caseprgname = strdup(progname), *caseprgdup = caseprgname;
+        if (progname[0] == '/') { // if it's absolute
+            replace_case_path(caseprgname);
+        }
+        else { // capitalize progname
+            while (*caseprgname) {
+                *caseprgname = toupper((unsigned char) *caseprgname);
+                caseprgname++;
+            }
+        }
+        PRINT_DBG("Cannot access %s, trying upper cased (%s)\n", progname, caseprgdup);
+
+        fprg = is_exe32 ? load_program(caseprgdup) : load_program_basename(basename(caseprgdup));
+        free(caseprgdup);
+
+        if (fprg == NULL) {
+            PRINT_ERR("Cannot load \"%s\": ", progname);
+            perror(NULL);
+            exit(10);
+        }
     }
 
-    // load the program file
+    // load the program file into memory
     {
         int i;
         struct CoffHdr_s prg_hdr;
