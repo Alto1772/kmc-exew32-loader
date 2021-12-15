@@ -12,6 +12,7 @@
 #include "wrappers.h"
 #include "fd.h"
 #include "paths.h"
+#include "memmap.h"
 
 static struct wrapprog_exec_s *wpexec = NULL;
 static DIR *find_file_obj = NULL;
@@ -46,9 +47,9 @@ static DIR *find_file_obj = NULL;
 
 // TODO: the loaded program changes the stack pointer to the address of init_first function, decide whether or not add a code that restores the stack pointer temporarily before jumping to these wrappers?
 
-CDECL static int realloc_segment_wrapper (UNUSED uint addr_high) {
-    // we don't need this because we've allocated enough space for the loaded program
+CDECL static int realloc_segment_wrapper (uint addr_high) {
     PRINT_DBG("realloc_segment: address 0x%08x\n", addr_high << 12);
+    return heap_alloc((void *)(addr_high << 12));
     return 0;
 }
 

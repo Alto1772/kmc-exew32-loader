@@ -27,8 +27,8 @@ struct CoffOptHdr_s {
 
 struct CoffSecHdr_s {
     char s_name[8];
-    int32_t s_paddr;
-    int32_t s_vaddr;
+    void *s_paddr;
+    void *s_vaddr;
     int32_t s_size;
     int32_t s_scnptr;
     int32_t s_relptr;
@@ -37,5 +37,9 @@ struct CoffSecHdr_s {
     uint16_t s_nlnno;
     int32_t s_flags;
 };
+
+#define STYP_TEXT 0x20
+#define STYP_DATA 0x40
+#define STYP_BSS  0x80
 
 #endif // EXE32_COFF_H
