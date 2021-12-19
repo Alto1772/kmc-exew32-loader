@@ -3,6 +3,7 @@
 
 int mem_map(void *, size_t, int);
 void mem_unmap_all(void);
+void print_map_entries(void);
 
 void *get_heap_addr(void);
 int heap_alloc(void *);
