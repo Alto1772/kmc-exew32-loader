@@ -10,6 +10,7 @@
 #include <spawn.h>
 #include "common.h"
 #include "wrappers.h"
+#include "load.h"
 #include "fd.h"
 #include "paths.h"
 #include "memmap.h"
@@ -623,7 +624,7 @@ CDECL static int get_dos_version_wrapper (void) {
 }
 
 CDECL static void exit_wrapper (int status) {
-    exit(status);
+    xexit(status);
 }
 
 CDECL static int direct_stdin_wrapper (void) {  // unused?
@@ -676,5 +677,6 @@ func_wrapper io_wrappers[] = {
 
 void exec_init_first(init_first_t init_first, struct wrapprog_exec_s *exec_info) {
     wpexec = exec_info;
+    save_stack_ptr();
 	(*init_first)(EXE32_PARAMS, io_wrappers, exec_info);
 }

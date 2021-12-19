@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/mman.h>
+#include <unistd.h>
 #include "common.h"
 
 #define ROUNDOFF(val, mul) (((val) + ((mul) - 1)) & ~((mul) - 1))
@@ -30,7 +31,7 @@ static void mentry_add_node(struct mapentry *mentry) {
     }
 }
 
-static struct mapentry *mentry_indexof_addr(uintptr_t addr) {
+UNUSED static struct mapentry *mentry_indexof_addr(uintptr_t addr) {
     struct mapentry *mentry;
 
     for (mentry = mentry_head; mentry != NULL; mentry = mentry->next) {
@@ -132,6 +133,8 @@ static int split_cut_map(uintptr_t addr, size_t len, int prot) {
         if (hi_mentry != NULL && addr > hi_mentry->addr && addr < hi_mentry->addr + hi_mentry->len) {
             len -= hi_mentry->addr + hi_mentry->len - addr;
             addr = hi_mentry->addr + hi_mentry->len;
+
+            if (len <= 0) return 0;
         }
 
         if (lo_mentry == NULL)
@@ -164,8 +167,8 @@ static int split_cut_map(uintptr_t addr, size_t len, int prot) {
 }
 
 int mem_map(void *addr, size_t len, int prot_exec) {
-    uintptr_t _addr = ROUNDOFF((uintptr_t)addr, 0x10000);
-    size_t _len = ROUNDOFF(len, 0x10000);
+    uintptr_t _addr = ROUNDOFF((uintptr_t)addr, (int) sysconf(_SC_PAGE_SIZE));
+    size_t _len = ROUNDOFF(len, (int) sysconf(_SC_PAGE_SIZE));
     int prot = PROT_READ | PROT_WRITE;
     if (prot_exec) prot |= PROT_EXEC;
 

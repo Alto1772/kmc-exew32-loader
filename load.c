@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/resource.h>
 #include "common.h"
 #include "load.h"
 #include "coff.h"
@@ -127,6 +128,30 @@ static FILE *load_program(const char *progname) {
 
 static struct wrapprog_exec_s wp_exec_info;
 
+void *main_stack_ptr;
+
+// restore stack pointer before exit
+static int _exit_status;
+static void _xexit(void) {
+    exit(_exit_status);
+}
+void xexit(int status) {
+    _exit_status = status;
+    restore_stack_ptr();
+    _xexit();
+}
+
+int get_stack_size(void) {
+    struct rlimit rl;
+
+    if (getrlimit(RLIMIT_STACK, &rl)) {
+        PRINT_DBG("> get_stack_size: cannot get stack size, defaulting to 0x10000.\n");
+        return 0x10000;
+    }
+
+    return rl.rlim_cur;
+}
+
 void load_and_exec_prog(char *progname, char *args, char *env) {
     FILE *fprg;
     init_first_t init_first_addr = NULL;
@@ -217,12 +242,18 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
     wp_exec_info.wp_environ = env;
 
     // loaded program sets the stack ptr to 0x01080000 before calling any of the wrappers
-    if (mem_map((void*) 0x01070000, 0x10000, 0)) {
-        PRINT_ERR("Error: Cannot allocate stack address at 0x01070000\n");
-        exit(20);
+    {
+        int stack_size = get_stack_size();
+
+        if (stack_size > 0x00010000) {
+            stack_size = 0x00010000;
+        }
+
+        if (mem_map((void*) 0x01080000 - stack_size, stack_size, 0)) {
+            PRINT_ERR("Error: Cannot allocate stack address at 0x01070000\n");
+            exit(20);
+        }
     }
 
     exec_init_first(init_first_addr, &wp_exec_info);
-
-    fclose(fprg);
 }
