@@ -23,3 +23,7 @@ just do "make symlinks" and it will create symbolic links to exe32-linux so it c
 ## `make DEBUG=1`
 
 activates debug mode and logs the wrapper actions in stderr. Add `WITH_LOG_FILE=1` to write in log.txt, but when exe32-linux is about to spawn (fork and exec) another exe32-linux process the newly created child process will overwrite the same log file, so avoid using the flag if you want to view the logs. (The only programs that I know of are MILD.OUT and MAKE.OUT)
+
+## `make NOBASEPATH=1`
+
+removes the "default base path" (first path to search for .out). Use it if you wanna move exe32-linux to other places, and make sure the PATH variable contains a path to bin .out programs.
