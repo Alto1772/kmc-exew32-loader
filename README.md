@@ -1,8 +1,10 @@
 # kmc-exew32-loader
 
-exew32 implementation on linux, without requiring to patch the specified .out program (the loaded program will take care of patching itself).
+allows you to run KMC programs without using WINE loader.
 
-The exe32 program can be symlinked or as a replacement of exew32.exe. The symlinks must not be in the directory where .out programs are located. All the programs now work correctly, but they need some tweaks so expect some bugs.
+The exew32-linux loader doesn't do any runtime hacks as the loaded program will take care of anyting.
+
+The exe32 program can be symlinked into another program, or as a replacement of EXEW32.EXE. The symlinks won't be in the same directory where .out programs are located. All the programs now work correctly, but they need some tweaks so expect some bugs.
 
 A Windows port of this might be easy, but exew32.exe is a windows program so I don't need to.
 
