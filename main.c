@@ -26,23 +26,68 @@ static char *wp_environ;
 
 extern char **environ;
 
+#ifdef DEFAULT_BASE_PATH
+static char *get_full_base_path(void) {
+    char *full_base_path = malloc(strlen(exe32_dirpath) + sizeof(DEFAULT_BASE_PATH));
+
+    strcpy(full_base_path, exe32_dirpath);
+    strcat(full_base_path, DEFAULT_BASE_PATH);
+
+    return full_base_path;
+}
+#endif
+
 void build_flat_environ(void) {
-    size_t flatenv_size = 0;
     char *wpenv_ptr;
+    size_t flatenv_size = 0;
     int i;
 
+#ifdef DEFAULT_BASE_PATH
+    char *base_path = get_full_base_path();
+    size_t base_path_len = strlen(base_path);
+    base_path[base_path_len-1] = ':';
+#endif
+
     for (i = 0; environ[i] != NULL; i++) {
-        flatenv_size += strlen(environ[i]) + 1;
+#ifdef DEFAULT_BASE_PATH
+        if (strstr(environ[i], "PATH=") == environ[i])
+            flatenv_size += base_path_len + strlen(environ[i]) + 1;
+        else
+#endif
+            flatenv_size += strlen(environ[i]) + 1;
     }
 
     wp_environ = malloc(++flatenv_size);
     wpenv_ptr = wp_environ;
     for (i = 0; environ[i] != NULL; i++) {
         size_t entry_size = strlen(environ[i]);
+
+#ifdef DEFAULT_BASE_PATH
+        if (strstr(environ[i], "PATH=") == environ[i]) {
+            /*  append the base path to PATH env (PATH=<base_path>:...)
+             *  because gcc.out does not search for a specific .out program
+             *  in the GCCDIR environment and instead use PATH.
+             */
+            strcpy(wpenv_ptr, "PATH=");
+            strcat(wpenv_ptr, base_path);
+            strcat(wpenv_ptr, environ[i] + 5);
+
+            strrep(wpenv_ptr, ':', ';');
+            free(base_path);
+            base_path = NULL;
+            wpenv_ptr += entry_size + base_path_len + 1;
+        }
+        else {
+            strcpy(wpenv_ptr, environ[i]);
+            wpenv_ptr += entry_size + 1;
+        }
+#else
         strcpy(wpenv_ptr, environ[i]);
-        if (strstr(wpenv_ptr, "PATH=") == wpenv_ptr) strrep(wpenv_ptr, ':', ';');
+        if (strstr(environ[i], "PATH=") == environ[i]) strrep(wpenv_ptr, ':', ';');
         wpenv_ptr += entry_size + 1;
+#endif
     }
+
     *wpenv_ptr = '\0';
 }
 
