@@ -8,6 +8,16 @@ The exe32 program can be symlinked into another program, or as a replacement of 
 
 A Windows port of this might be easy, but exew32.exe is a windows program so I don't need to.
 
+# Build Flags
+
+## `make DEBUG=1`
+
+activates debug mode and logs the wrapper actions in stderr. Add `WITH_LOG_FILE=1` to write the debug logs in log.txt, and do not run other programs that has an ability to spawn (fork and exec) a new exe32-linux process because that newly created child process will overwrite the same log file, so avoid using the flag if you try to execute some programs like MILD.OUT and MAKE.OUT and want to view log.txt file.
+
+## `make NOBASEPATH=1`
+
+removes the "default base path" (first path to search for .out, mostly set in the makefile as `kmc/gcc/mipse/bin`). Use it if you wanna move exe32-linux to other places, and also make sure the PATH environment contains the directory where the .out programs are found plus the exe32 itself of where you put it.
+
 # Notes
 
 ## MAKE.OUT
@@ -21,11 +31,3 @@ doesn't require the GCCDIR environment variable, but if it is required then reme
 ## the symlinks
 
 just do "make symlinks" and it will create symbolic links to exe32-linux so it can command without having to enter "./exe32-linux gcc".
-
-## `make DEBUG=1`
-
-activates debug mode and logs the wrapper actions in stderr. Add `WITH_LOG_FILE=1` to write in log.txt, but when exe32-linux is about to spawn (fork and exec) another exe32-linux process the newly created child process will overwrite the same log file, so avoid using the flag if you want to view the logs. (The only programs that I know of are MILD.OUT and MAKE.OUT)
-
-## `make NOBASEPATH=1`
-
-removes the "default base path" (first path to search for .out). Use it if you wanna move exe32-linux to other places, and make sure the PATH variable contains a path to bin .out programs.
