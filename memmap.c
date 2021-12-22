@@ -11,7 +11,6 @@
 struct mapentry {
     uintptr_t addr;
     size_t len;
-    int prot;
     struct mapentry *next;
 };
 
@@ -105,10 +104,10 @@ static int mentry_is_in_address_range(uintptr_t addr, size_t len) {
     return 0;
 }
 
-static int _mem_map(uintptr_t addr, size_t len, int prot) {
+static int _mem_map(uintptr_t addr, size_t len) {
     struct mapentry *mentry;
 
-    if (mmap((void *) addr, len, prot, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0) == NULL) {
+    if (mmap((void *) addr, len, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0) == NULL) {
         PRINT_DBG("> mem_map: Cannot allocate virtual memory address at 0x%"PRIxPTR" with size 0x%x\n", addr, len);
         return 1;
     }
@@ -116,13 +115,12 @@ static int _mem_map(uintptr_t addr, size_t len, int prot) {
     mentry = malloc(sizeof(struct mapentry));
     mentry->addr = addr;
     mentry->len = len;
-    mentry->prot = prot;
 
     mentry_add_node(mentry);
     return 0;
 }
 
-static int split_cut_map(uintptr_t addr, size_t len, int prot) {
+static int split_cut_map(uintptr_t addr, size_t len) {
     struct mapentry *lo_mentry, *hi_mentry;
 
     while (1) {
@@ -138,7 +136,7 @@ static int split_cut_map(uintptr_t addr, size_t len, int prot) {
         }
 
         if (lo_mentry == NULL)
-            return _mem_map(addr, len, prot);
+            return _mem_map(addr, len);
 
         // if it's already in the list
         else if (lo_mentry->addr == addr) {
@@ -155,7 +153,7 @@ static int split_cut_map(uintptr_t addr, size_t len, int prot) {
 
         // if entry's addr is way ahead
         else if (lo_mentry->addr > addr) {
-            if (_mem_map(addr, lo_mentry->addr - addr, prot))
+            if (_mem_map(addr, lo_mentry->addr - addr))
                 return 1;
 
             len -= lo_mentry->addr - addr;
@@ -166,17 +164,15 @@ static int split_cut_map(uintptr_t addr, size_t len, int prot) {
     return 1; // just in case the compiler doesn't want no return after the loop
 }
 
-int mem_map(void *addr, size_t len, int prot_exec) {
+int mem_map(void *addr, size_t len) {
     uintptr_t _addr = ROUNDOFF((uintptr_t)addr, (int) sysconf(_SC_PAGE_SIZE));
     size_t _len = ROUNDOFF(len, (int) sysconf(_SC_PAGE_SIZE));
-    int prot = PROT_READ | PROT_WRITE;
-    if (prot_exec) prot |= PROT_EXEC;
 
     if (mentry_is_in_address_range(_addr, _len)) {
-        return split_cut_map(_addr, _len, prot);
+        return split_cut_map(_addr, _len);
     }
     else
-        return _mem_map(_addr, _len, prot);
+        return _mem_map(_addr, _len);
 }
 
 void mem_unmap_all(void) {
@@ -215,7 +211,7 @@ int heap_alloc(void *end_addr) {
     }
     heapsize = end_addr - heap_addr;
 
-    ret = mem_map(heap_addr, heapsize, 0);
+    ret = mem_map(heap_addr, heapsize);
     if (ret) heap_addr = end_addr;
     return ret;
 }

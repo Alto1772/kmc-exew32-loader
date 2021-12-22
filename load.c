@@ -216,7 +216,7 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
                 init_first_addr = (init_first_t) sec.s_vaddr;
             }
 
-            if (mem_map(sec.s_vaddr, sec.s_size, sec.s_flags & STYP_TEXT ? 1 : 0)) {
+            if (mem_map(sec.s_vaddr, sec.s_size)) {
                 PRINT_ERR("Error: Cannot allocate virtual address at %p\n", sec.s_vaddr);
                 exit(20);
             }
@@ -249,7 +249,7 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
             stack_size = 0x00010000;
         }
 
-        if (mem_map((void*) 0x01080000 - stack_size, stack_size, 0)) {
+        if (mem_map((void*) 0x01080000 - stack_size, stack_size)) {
             PRINT_ERR("Error: Cannot allocate stack address at 0x01070000\n");
             exit(20);
         }
