@@ -5,6 +5,7 @@
 #include <sys/resource.h>
 #include "common.h"
 #include "main.h"
+#include "load.h"
 #include "coff.h"
 #include "wrappers.h"
 #include "fd.h"
