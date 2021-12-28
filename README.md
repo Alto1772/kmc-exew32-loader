@@ -22,7 +22,7 @@ removes the "default base path" (first path to search for .out, mostly set in th
 
 ## `EXE32_LOCK=1`
 
-This environment variable keeps from temporary files from clashing each other by using a process locking mechanism.
+Adding this environment variable keeps from exe32 processes to simultaneously execute each other, affecting the files that will create the same name such as temp files, by using a cross-process mutex mechanism.
 
 ## Case sensitivity
 
