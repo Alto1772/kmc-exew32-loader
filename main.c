@@ -3,8 +3,10 @@
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
-#include <limits.h>
 #include <sys/mman.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <errno.h>
 #include "common.h"
 #include "load.h"
 #include "paths.h"
@@ -19,10 +21,97 @@
 
 char *exe32_dirpath = NULL;
 int is_exe32 = 0;
+int exe32_lock = 0;
 
 static char *wp_progname;
 static char *wp_args;
 static char *wp_environ;
+
+#define LOCKNAME ".exe32-lock"
+#define MAX_READ_RETRIES 100000000
+
+static char *lock_path;
+
+void lock_wait(void) {
+    int lock_fd;
+    char *tmpdir, pidstr[11];
+
+    if (!exe32_lock) return;
+
+    if ((tmpdir = getenv("TMPDIR")) == NULL)
+        if ((tmpdir = getenv("TEMP")) == NULL)
+            tmpdir = ".";
+
+    lock_path = malloc(strlen(tmpdir) + sizeof(LOCKNAME) + 1);
+    strcpy(lock_path, tmpdir);
+    strcat(lock_path, "/");
+    strcat(lock_path, LOCKNAME);
+
+    do {
+        lock_fd = open(lock_path, O_WRONLY | O_CREAT | O_EXCL, 0644);
+        if (lock_fd == -1) {
+            if (errno == EEXIST) {
+                lock_fd = open(lock_path, O_RDONLY);
+                if (lock_fd == -1) {
+                    if (errno != ENOENT) {
+                        PRINT_DBG("> lock_wait: Error creating lock file \"%s\", (%s). Disabled cross-process locking.\n", lock_path, strerror(errno));
+                        exe32_lock = 0;
+                        return;
+                    }
+                }
+                else {
+                    ssize_t bread; // :like:
+                    unsigned long pidnum, read_retries = 0;
+                    memset(pidstr, 0, 11);
+
+                    do {
+                        bread = read(lock_fd, pidstr, 10);
+                    } while (read_retries++ < MAX_READ_RETRIES && (bread == 0 || pidstr[0] == '\0'));
+                    if (read_retries >= MAX_READ_RETRIES) { // failsafe if process didn't give us pid
+                        PRINT_DBG("> lock_wait: read retries exceeded to max. Disabled cross-process locking.\n");
+                        close(lock_fd);
+                        exe32_lock = 0;
+                        return;
+                    }
+
+                    pidnum = strtoul(pidstr, NULL, 10);
+                    if (kill(pidnum, 0) == 0) {
+                        PRINT_DBG("> lock_wait: waiting for pid %ld to exit.\n", pidnum);
+                        while (kill(pidnum, 0) == 0) {
+                            ;
+                        }
+                        close(lock_fd);
+                    }
+                    else {
+                        PRINT_DBG("> lock_wait: pid %ld does not exist at this time.\n", pidnum);
+                        close(lock_fd);
+                        remove(lock_path);
+                    }
+
+                    lock_fd = -1;
+                }
+            }
+            else if (errno != ENOENT) {
+                PRINT_DBG("> lock_wait: Error creating lock file \"%s\", (%s). Disabled cross-process locking.\n", lock_path, strerror(errno));
+                exe32_lock = 0;
+                return;
+            }
+        }
+    } while (lock_fd == -1);
+
+    snprintf(pidstr, 10, "%d", getpid());
+    write(lock_fd, pidstr, strlen(pidstr));
+    close(lock_fd);
+}
+
+void unlock_wait(void) {
+    if (exe32_lock && lock_path) {
+        remove(lock_path);
+        free(lock_path);
+        lock_path = NULL;
+        exe32_lock = 0;
+    }
+}
 
 extern char **environ;
 
@@ -173,6 +262,7 @@ static void init_log(void) {
 #endif
 
 void free_all(void) {
+    unlock_wait();
 #ifndef NDEBUG
     if (log_file != NULL) 
         fclose(log_file);
@@ -187,6 +277,13 @@ void free_all(void) {
 }
 
 int main(int argc, char *argv[]) {
+    char *_exe32_lock = getenv("EXE32_LOCK");
+    if (_exe32_lock) {
+        if (_exe32_lock[0] == '1' && _exe32_lock[1] == '\0')
+            exe32_lock = 1;
+        unsetenv("EXE32_LOCK");
+    }
+
 #ifndef NDEBUG
     init_log();
 #endif

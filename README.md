@@ -16,9 +16,18 @@ activates debug mode and logs the wrapper actions in stderr. Add `WITH_LOG_FILE=
 
 ## `make NOBASEPATH=1`
 
-removes the "default base path" (first path to search for .out, mostly set in the makefile as `kmc/gcc/mipse/bin`). Use it if you wanna move exe32-linux to other places, and also make sure the PATH environment contains the directory where the .out programs are found plus the exe32 itself of where you put it.
+removes the "default base path" (first path to search for .out, mostly set in the makefile as `kmc/gcc/mipse/bin`). Use it if you wanna move exe32-linux to other places like in ultra/GCC/MIPSE/BIN directory, and also make sure the PATH environment contains the directory where the .out programs are found plus the exe32 itself of where you put it.
 
 # Notes
+
+## `EXE32_LOCK=1`
+
+This environment variable keeps from temporary files from clashing each other by using a process locking mechanism.
+
+## Case sensitivity
+
+The program is equipped with case-insensitive translation so you don't worry about having your path with capital letters. **Warning:** Please do not mix up the same directories/filenames with differrent case as it might break or confuse the program.
+Another problem is that when it calls the create function and the created file does not exist yet before the file creation, it will create the file in lowercased. A workaround for this is to create an empty file with the same name (`touch <filename>`) and then execute the command again.
 
 ## MAKE.OUT
 

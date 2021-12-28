@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <sys/resource.h>
 #include "common.h"
-#include "load.h"
+#include "main.h"
 #include "coff.h"
 #include "wrappers.h"
 #include "fd.h"
@@ -235,6 +235,7 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
         fclose(fprg);
     }
 
+    lock_wait();
     init_fd_fptrs();
     wp_exec_info.wp_heap_start = get_heap_addr(); // this might be unused
     wp_exec_info.wp_name = full_win32_path;

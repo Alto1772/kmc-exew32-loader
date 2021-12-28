@@ -9,7 +9,5 @@ extern void *main_stack_ptr;
 #define restore_stack_ptr() __asm__("mov %0, %%esp\n" :: "r" (main_stack_ptr))
 
 extern char *full_win32_path;
-extern char *exe32_dirpath;
-extern int is_exe32;
 
 #endif // EXE32_LOAD_H
