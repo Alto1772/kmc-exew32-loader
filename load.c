@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
+#include <ctype.h> // for upper()
 #include <sys/resource.h>
+#include <unistd.h>
+#include <errno.h>
 #include "common.h"
 #include "main.h"
 #include "load.h"
@@ -17,117 +19,139 @@
 #define DEFAULT_DRIVE "C:\\"
 char *full_win32_path = NULL;
 
-static void set_full_path(const char *prog_path) {
-    if (full_win32_path != NULL) free(full_win32_path);
-    full_win32_path = malloc(sizeof(DEFAULT_DRIVE) + strlen(prog_path));
-    strcpy(full_win32_path, DEFAULT_DRIVE);
-    strcat(full_win32_path, prog_path);
-    strrep_forwslashes(full_win32_path);
-}
-
-static FILE *load_program_relative(const char *progname) {
-    FILE *f_ret;
-    char *fullpath;
-
-    fullpath = malloc(strlen(exe32_dirpath) + strlen(progname) + 1);
-    strcpy(fullpath, exe32_dirpath);
-    strcat(fullpath, progname);
-    f_ret = fopen(fullpath, "rb");
-    if (f_ret) set_full_path(fullpath);
-    free(fullpath);
-    return f_ret;
-}
+#define fullpath_relative_to_exe32_dir(progname) concat(exe32_dirpath, progname)
 
 #ifdef DEFAULT_BASE_PATH
-static FILE *load_program_from_base_path(const char *progname) {
-    FILE *f_ret;
-    char *new_path = malloc(sizeof(DEFAULT_BASE_PATH) + strlen(progname));
-    strcpy(new_path, DEFAULT_BASE_PATH);
-    strcat(new_path, progname);
-
-    PRINT_DBG("> base_path: %s\n", new_path);
-    f_ret = load_program_relative(new_path);
-    free(new_path);
-
-    return f_ret;
-}
+#define fullpath_with_relative_base_path(progname) concat3(exe32_dirpath, DEFAULT_BASE_PATH, progname)
 #endif
 
-static FILE *load_program_from_paths(const char *progname) {
-    char *env_path = getenv("PATH");
-    size_t prgname_len = strlen(progname);
-    FILE *f_ret;
+#define file_exists(file) !access(file, F_OK)
 
-    PRINT_DBG("> from_paths: PATH=%s\n", env_path);
-    while (env_path) {
-        char *colon_delim;
-        size_t path_len;
+static char *find_program(char *progname) {
+    char *new_path;
 
-        if ((colon_delim = strchr(env_path, ':')) == NULL) {
-            path_len = strlen(env_path);
-        } else {
-            path_len = colon_delim - env_path;
+    if (is_exe32) {
+        if (progname[0] != '/') {
+            if (strchr(progname, '/') != NULL) {
+                if (!file_exists(progname)) {
+                    new_path = fullpath_relative_to_exe32_dir(progname);
+                    if (file_exists(new_path)) {
+                        return new_path;
+                    }
+                    else {
+                        free(new_path);
+                        return NULL;
+                    }
+                }
+                else // relative to current work dir
+                    return file_exists(progname) ? progname : NULL;
+            }
+            // else fallthrough
         }
-
-        char *new_progname = malloc(path_len + prgname_len + 2);
-        memcpy(new_progname, env_path, path_len); /* that stupid stringop-trunctation warning is annoying to me! */
-        new_progname[path_len] = '/';
-        strcpy(new_progname + path_len + 1, progname);
-
-        f_ret = fopen(new_progname, "rb");
-        if (f_ret) set_full_path(new_progname);
-
-        PRINT_DBG("> from_paths: %s\n", new_progname);
-        if (f_ret) {
-            free(new_progname);
-            return f_ret;
-        }
-        else {
-            free(new_progname);
-            env_path = colon_delim ? colon_delim + 1 : NULL;
-        }
+        else // absolute
+            return file_exists(progname) ? progname : NULL;
+    }
+    else {
+        progname = basename(progname);
     }
 
+    /**** find_program_basename ****/
+    /* search progname in exe32's directory, base path relative to exe32's dir, and the paths in PATH environment */
+
+    new_path = fullpath_relative_to_exe32_dir(progname);
+    if (file_exists(new_path)) return new_path;
+    free(new_path);
+
+#ifdef DEFAULT_BASE_PATH
+    new_path = fullpath_with_relative_base_path(progname);
+    if (file_exists(new_path)) return new_path;
+    free(new_path);
+#endif
+
+    {
+        /**** full_path_from_path_env ****/
+
+        char *paths = strdup(getenv("PATH")), *_paths, *pathtoken;
+
+        for (_paths = paths ; ; _paths = NULL) {
+            pathtoken = strtok(_paths, ":");
+            if (pathtoken == NULL) break;
+
+            new_path = concat(pathtoken, progname);
+            if (file_exists(new_path)) {
+                free(paths);
+                return new_path;
+            }
+            else
+                free(new_path);
+        }
+
+        free(paths);
+    }
+
+    // all else fails
     return NULL;
 }
 
-// search progname in exe32's directory, base path relative to exe32's dir, and in paths
-static FILE *load_program_basename(const char *progname) {
-    FILE *f_ret = load_program_relative(progname);
-    if (f_ret == NULL) {
-#ifdef DEFAULT_BASE_PATH
-        f_ret = load_program_from_base_path(progname);
-        if (f_ret == NULL)
-#endif
-            f_ret = load_program_from_paths(progname);
-    }
-    return f_ret;
-}
+// load the program file into memory
+void *load_coff_prg(const char *progname) {
+    void *text_addr = NULL;
+    FILE *fprg = fopen(progname, "rb");
+    int i;
+    struct CoffHdr_s prg_hdr;
+    struct CoffSecHdr_s *prg_secs;
 
-static FILE *load_program(const char *progname) {
-    FILE *f_ret;
-    if (progname[0] != '/') {
-        char *prg_slashpos = strchr(progname, '/');
-        if (prg_slashpos == NULL) {
-            return load_program_basename(progname);
-        }
-        else {
-            f_ret = fopen(progname, "rb"); // load program relative to current dir
-            if (f_ret)
-                set_full_path(progname);
-            else
-                return load_program_relative(progname);
-            return f_ret;
-        }
+    if (fprg == NULL) {
+        PRINT_ERR("Error opening \"%s\": %s\n", progname, strerror(errno));
+        exit(10);
     }
-    else { // load_program_absolute
-        f_ret = fopen(progname, "rb");
-        if (f_ret) set_full_path(progname);
-        return f_ret;
-    }
-}
 
-static struct wrapprog_exec_s wp_exec_info;
+    fread(&prg_hdr, sizeof(struct CoffHdr_s), 1, fprg);
+    if (feof(fprg) && prg_hdr.f_magic != 0x014c) {
+        PRINT_ERR("\"%s\" is not a COFF Program!\n", progname);
+        exit(10);
+    }
+    if (prg_hdr.f_nscns < 1) {
+        PRINT_ERR("\"%s\" has no sections!\n", progname);
+        exit(10);
+    }
+    if (prg_hdr.f_opthdr != 0x1c) {
+        PRINT_ERR("Optional header size not 0x1c\n");
+        exit(11);
+    }
+    fseek(fprg, 0x1c, SEEK_CUR);
+
+    prg_secs = malloc(sizeof(struct CoffSecHdr_s) * prg_hdr.f_nscns);
+    fread(prg_secs, prg_hdr.f_nscns, sizeof(struct CoffSecHdr_s), fprg);
+    if (feof(fprg)) {
+        PRINT_ERR("EOF while reading section headers\n");
+        exit(11);
+    }
+
+    for (i = 0; i < prg_hdr.f_nscns; i++) {
+        struct CoffSecHdr_s sec = prg_secs[i];
+        if (sec.s_flags & STYP_TEXT && text_addr == NULL) {
+            text_addr = (init_first_t) sec.s_vaddr;
+        }
+
+        if (mem_map(sec.s_vaddr, sec.s_size)) {
+            PRINT_ERR("Error: Cannot allocate virtual address at %p\n", sec.s_vaddr);
+            exit(20);
+        }
+
+        if (!(sec.s_flags & STYP_BSS)) {
+            fseek(fprg, sec.s_scnptr, SEEK_SET);
+            fread(sec.s_vaddr, sec.s_size, 1, fprg);
+            if (feof(fprg)) {
+                PRINT_ERR("EOF while reading at %#x", sec.s_scnptr);
+                exit(11);
+            }
+        }
+    }
+
+    free(prg_secs);
+    return text_addr;
+}
 
 void *main_stack_ptr;
 
@@ -154,13 +178,14 @@ int get_stack_size(void) {
 }
 
 void load_and_exec_prog(char *progname, char *args, char *env) {
-    FILE *fprg;
+    char *new_progname;
+    static struct wrapprog_exec_s wp_exec_info;
     init_first_t init_first_addr = NULL;
 
     // find the program file
-    fprg = is_exe32 ? load_program(progname) : load_program_basename(basename(progname));
+    new_progname = find_program(progname);
 
-    if (fprg == NULL) {
+    if (new_progname == NULL) {
         char *caseprgname = strdup(progname), *caseprgdup = caseprgname;
         if (progname[0] == '/') { // if it's absolute
             replace_case_path(caseprgname);
@@ -171,71 +196,19 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
                 caseprgname++;
             }
         }
-        PRINT_DBG("Cannot access %s, trying upper cased (%s)\n", progname, caseprgdup);
-
-        fprg = is_exe32 ? load_program(caseprgdup) : load_program_basename(basename(caseprgdup));
-        free(caseprgdup);
-
-        if (fprg == NULL) {
-            PRINT_ERR("Cannot load \"%s\": ", progname);
-            perror(NULL);
+        PRINT_DBG("Cannot load %s, trying upper cased (%s)\n", progname, caseprgdup);
+        new_progname = find_program(caseprgdup);
+        if (new_progname == NULL) {
+            PRINT_ERR("Cannot load \"%s\": %s\n", caseprgdup, strerror(errno));
             exit(10);
         }
     }
 
-    // load the program file into memory
-    {
-        int i;
-        struct CoffHdr_s prg_hdr;
-        struct CoffSecHdr_s *prg_secs;
 
-        fread(&prg_hdr, sizeof(struct CoffHdr_s), 1, fprg);
-        if (feof(fprg) && prg_hdr.f_magic != 0x014c) {
-            PRINT_ERR("\"%s\" is not a COFF Program!\n", progname);
-            exit(10);
-        }
-        if (prg_hdr.f_nscns < 1) {
-            PRINT_ERR("\"%s\" has no sections!\n", progname);
-            exit(10);
-        }
-        if (prg_hdr.f_opthdr != 0x1c) {
-            PRINT_ERR("Optional header size not 0x1c\n");
-            exit(11);
-        }
-        fseek(fprg, 0x1c, SEEK_CUR);
-
-        prg_secs = malloc(sizeof(struct CoffSecHdr_s) * prg_hdr.f_nscns);
-        fread(prg_secs, prg_hdr.f_nscns, sizeof(struct CoffSecHdr_s), fprg);
-        if (feof(fprg)) {
-            PRINT_ERR("EOF while reading section headers\n");
-            exit(11);
-        }
-
-        for (i = 0; i < prg_hdr.f_nscns; i++) {
-            struct CoffSecHdr_s sec = prg_secs[i];
-            if (sec.s_flags & STYP_TEXT && init_first_addr == NULL) {
-                init_first_addr = (init_first_t) sec.s_vaddr;
-            }
-
-            if (mem_map(sec.s_vaddr, sec.s_size)) {
-                PRINT_ERR("Error: Cannot allocate virtual address at %p\n", sec.s_vaddr);
-                exit(20);
-            }
-
-            if (!(sec.s_flags & STYP_BSS)) {
-                fseek(fprg, sec.s_scnptr, SEEK_SET);
-                fread(sec.s_vaddr, sec.s_size, 1, fprg);
-                if (feof(fprg)) {
-                    PRINT_ERR("EOF while reading at %#x", sec.s_scnptr);
-                    exit(11);
-                }
-            }
-        }
-
-        free(prg_secs);
-        fclose(fprg);
-    }
-
+    full_win32_path = concat(DEFAULT_DRIVE, new_progname);
+    strrep_forwslashes(full_win32_path);
+    init_first_addr = (init_first_t)load_coff_prg(new_progname);
+    free(new_progname);
     lock_wait();
     init_fd_fptrs();
     wp_exec_info.wp_heap_start = get_heap_addr(); // this might be unused

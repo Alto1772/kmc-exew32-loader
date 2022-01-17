@@ -19,6 +19,9 @@ __attribute__((format(printf,1,2))) void write_log(const char *, ...);
 #define PRINT_DBG(...)
 #endif
 
+#define PRINT_DBG_FUNC(fmt, ...) PRINT_DBG(__func__ ": " fmt, __VA_ARGS__)
+#define PRINT_DBG_INTFUNC(fmt, ...) PRINT_DBG("> " __func__ ": " fmt, __VA_ARGS__)
+
 // Very simple implementation that does not modify its characters
 static inline char *basename(char *path) {
     char *base_path = strrchr(path, '/');
@@ -48,5 +51,61 @@ static inline void strnrep(char *str, char csrc, char cdes, int len) {
 
 #define strnrep_backslashes(str, len) strnrep(str, '\\', '/', len)
 #define strnrep_forwslashes(str, len) strnrep(str, '/', '\\', len)
+
+#include <stdlib.h>
+
+static inline char *concat(const char *cp1, const char *cp2) {
+    char *catstr = malloc(strlen(cp1) + strlen(cp2) + 1);
+    strcpy(catstr, cp1);
+    strcat(catstr, cp2);
+
+    return catstr;
+}
+
+static inline char *concat3(const char *cp1, const char *cp2, const char *cp3) {
+    char *catstr = malloc(strlen(cp1) + strlen(cp2) + strlen(cp3) + 1);
+    strcpy(catstr, cp1);
+    strcat(catstr, cp2);
+    strcat(catstr, cp3);
+
+    return catstr;
+}
+
+static inline char *concat4(const char *cp1, const char *cp2, const char *cp3, const char *cp4) {
+    char *catstr = malloc(strlen(cp1) + strlen(cp2) + strlen(cp3) + strlen(cp4) + 1);
+    strcpy(catstr, cp1);
+    strcat(catstr, cp2);
+    strcat(catstr, cp3);
+    strcat(catstr, cp4);
+
+    return catstr;
+}
+
+#if 0
+#include <stddef.h>
+#include <stdarg.h>
+
+static inline char *concatn(const char num, ...) {
+    char *catstr;
+    size_t catsize = 0;
+    int i;
+    va_list ap;
+
+    va_start(ap, num);
+    for (i = 0; i < num; i++) catsize += strlen(va_arg(ap, char *));
+    va_end(ap);
+
+    catstr = malloc(catsize + 1);
+
+    va_start(ap, num);
+    for (i = 0; i < num; i++) {
+        if (i == 0) strcpy(catstr, va_arg(ap, char *));
+        else        strcat(catstr, va_arg(ap, char *));
+    }
+    va_end(ap);
+
+    return catstr;
+}
+#endif
 
 #endif // EXE32_COMMON_H
