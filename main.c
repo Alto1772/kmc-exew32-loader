@@ -10,6 +10,7 @@
 #include "common.h"
 #include "load.h"
 #include "paths.h"
+#include "memmap.h"
 
 #ifndef EXEPROGNAME
 #define EXEPROGNAME "exe32-linux"
@@ -25,16 +26,6 @@ int exe32_lock = 0;
 static char *wp_progname;
 static char *wp_args;
 static char *wp_environ;
-
-static void init_allocate(void) {
-    void *memmap;
-    
-    memmap = mmap((void*)0x01000000, 0x10000000, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0x0);
-    if (memmap == NULL) {
-        printf(EXEPROGNAME": Cannot allocate virtual memory address at 0x01000000!\n");
-        exit(10);
-    }
-}
 
 #define LOCKNAME ".exe32-lock"
 #define MAX_READ_RETRIES 100000000
@@ -276,6 +267,7 @@ void free_all(void) {
     if (log_file != NULL) 
         fclose(log_file);
 #endif
+    mem_unmap_all();
     free(wp_progname);
     free(wp_args);
     free(wp_environ);
@@ -299,7 +291,6 @@ int main(int argc, char *argv[]) {
     build_flat_environ();
 
     atexit(free_all);
-    init_allocate();
     load_and_exec_prog(wp_progname, wp_args, wp_environ);
 
     return 0;

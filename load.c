@@ -2,12 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/resource.h>
 #include "common.h"
 #include "main.h"
+#include "load.h"
 #include "coff.h"
 #include "wrappers.h"
 #include "fd.h"
 #include "paths.h"
+#include "memmap.h"
 
 // lets set up a fake program path to fool that we are in win32 environment
 // needed by ld.out
@@ -102,23 +105,53 @@ static FILE *load_program_basename(const char *progname) {
 }
 
 static FILE *load_program(const char *progname) {
+    FILE *f_ret;
     if (progname[0] != '/') {
         char *prg_slashpos = strchr(progname, '/');
         if (prg_slashpos == NULL) {
             return load_program_basename(progname);
         }
         else {
-            return load_program_relative(progname);
+            f_ret = fopen(progname, "rb"); // load program relative to current dir
+            if (f_ret)
+                set_full_path(progname);
+            else
+                return load_program_relative(progname);
+            return f_ret;
         }
     }
     else { // load_program_absolute
-        FILE *f_ret = fopen(progname, "rb");
+        f_ret = fopen(progname, "rb");
         if (f_ret) set_full_path(progname);
         return f_ret;
     }
 }
 
 static struct wrapprog_exec_s wp_exec_info;
+
+void *main_stack_ptr;
+
+// restore stack pointer before exit
+static int _exit_status;
+static void _xexit(void) {
+    exit(_exit_status);
+}
+void xexit(int status) {
+    _exit_status = status;
+    restore_stack_ptr();
+    _xexit();
+}
+
+int get_stack_size(void) {
+    struct rlimit rl;
+
+    if (getrlimit(RLIMIT_STACK, &rl)) {
+        PRINT_DBG("> get_stack_size: cannot get stack size, defaulting to 0x10000.\n");
+        return 0x10000;
+    }
+
+    return rl.rlim_cur;
+}
 
 void load_and_exec_prog(char *progname, char *args, char *env) {
     FILE *fprg;
@@ -180,13 +213,18 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
 
         for (i = 0; i < prg_hdr.f_nscns; i++) {
             struct CoffSecHdr_s sec = prg_secs[i];
-            if (init_first_addr == NULL) {
+            if (sec.s_flags & STYP_TEXT && init_first_addr == NULL) {
                 init_first_addr = (init_first_t) sec.s_vaddr;
             }
 
-            if (sec.s_scnptr != 0) {
+            if (mem_map(sec.s_vaddr, sec.s_size)) {
+                PRINT_ERR("Error: Cannot allocate virtual address at %p\n", sec.s_vaddr);
+                exit(20);
+            }
+
+            if (!(sec.s_flags & STYP_BSS)) {
                 fseek(fprg, sec.s_scnptr, SEEK_SET);
-                fread((void*)sec.s_vaddr, sec.s_size, 1, fprg);
+                fread(sec.s_vaddr, sec.s_size, 1, fprg);
                 if (feof(fprg)) {
                     PRINT_ERR("EOF while reading at %#x", sec.s_scnptr);
                     exit(11);
@@ -200,10 +238,24 @@ void load_and_exec_prog(char *progname, char *args, char *env) {
 
     lock_wait();
     init_fd_fptrs();
-    wp_exec_info.wp_heap_start = (void *)0x01000000; // this might be unused
+    wp_exec_info.wp_heap_start = get_heap_addr(); // this might be unused
     wp_exec_info.wp_name = full_win32_path;
     wp_exec_info.wp_args = args;
     wp_exec_info.wp_environ = env;
+
+    // loaded program sets the stack ptr to 0x01080000 before calling any of the wrappers
+    {
+        int stack_size = get_stack_size();
+
+        if (stack_size > 0x00010000) {
+            stack_size = 0x00010000;
+        }
+
+        if (mem_map((void*) 0x01080000 - stack_size, stack_size)) {
+            PRINT_ERR("Error: Cannot allocate stack address at 0x01070000\n");
+            exit(20);
+        }
+    }
 
     exec_init_first(init_first_addr, &wp_exec_info);
 }
