@@ -4,7 +4,7 @@ OBJECTS = $(SOURCES:.c=.o)
 DEPFILES = $(SOURCES:.c=.d)
 
 EXEPROGNAME = exe32-linux
-EXEPROGVER = 1a
+EXEPROGVER = 1b
 BASE_PATH = kmc/gcc/mipse/bin
 
 CFLAGS = -m32 -Wall -Wextra -DEXEPROGNAME=\"$(EXEPROGNAME)\" -DEXEPROGVER="\"$(EXEPROGVER)\""
